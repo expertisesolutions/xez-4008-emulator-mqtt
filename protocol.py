@@ -3,6 +3,7 @@ import serial
 import binascii
 import time
 import serial.rs485
+import sys
 
 baud = 4800
 stop_bits = serial.STOPBITS_ONE
@@ -27,48 +28,18 @@ class protocol:
         self.send_buffer = []
 
     def __handle_msg (self, msg, handler):
-        ccrc = msg[-1]
-        ncrc = crc(msg[:-1])
-
-        if ccrc != ncrc:
+        if crc(msg) != 0:
             #print ("Error doing CRC check for ", msg)
-            for i in range (len(msg)-1):
-                ccrc = msg[i]
-                ncrc = crc(msg[:i])
-                if ccrc == ncrc: # check first slice
-                    ccrc = msg[-1]
-                    ncrc = crc(msg[i+1:-1])
-                    if ccrc == ncrc:
-                        #print ("Looks like it should be broken down to: ", msg[:i+1], " and ", msg[i+1:])
-                        self.__handle_msg (msg[:i+1], handler)
-                        self.__handle_msg (msg[i+1:], handler)
-                        return
-                    else:
-                        print ("Second part did not check, first part is: ", msg[:i+1])
-
-            print ("Error doing CRC check for ", msg) #, ". Ignoring timing: ", delta*1000, ' gap before ', wait_before*1000)
-            #f.write (f'<- CRC Fail for {bytes.hex(msg)} gap before: {wait_before*1000} \n')
+            j = 0
+            for i in range (2,len(msg)-1):
+                if i - j > 1: # at least two bytes
+                    new_msg = msg[j:i]
+                    if crc(new_msg) == 0: # check current slice
+                        self.__handle_msg (new_msg, handler)
+                        j = i # next starts at open-ended index
             return
 
         handler (msg[:-1])
-        # if msg == b'\x0e\x20\x05\x03\x00\x00\x00\x1e\xc9':
-        #     m = group2[0]
-        #     m = m[:-1]
-        #     m = m + bytes([crc(m)])
-        #     self.send_buffer += [m]
-        # elif msg[:2] == (group2[1])[:2]:
-        #     m = group2[2]
-        #     m = m[:-1]
-        #     m = m + bytes([crc(m)])
-        #     self.send_buffer += [m]
-        #     #print ('asked ', msg)
-        #     #send_buffer += [group2[2]]
-        # elif msg[:2] == (group2[3])[:2]:
-        #     m = group2[4]
-        #     m = m[:-1]
-        #     m = m + bytes([crc(m)])
-        #     self.send_buffer += [m]
-        #     #self.send_buffer += [group2[4]]
 
     def loop (self, handle_msg):
         now = time.clock_gettime(time.CLOCK_MONOTONIC)
@@ -87,7 +58,7 @@ class protocol:
             self.last_byte_time = now
 
         if (now - self.before_read_success_time) > one_char_wait*2:
-            if len(self.msg) != 0:
+            if len(self.msg) > 1:
                 self.__handle_msg (self.msg, handle_msg)
                 self.last_prev_byte_time = self.last_byte_time
             if not self.timeout: # start next message
