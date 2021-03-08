@@ -3,6 +3,7 @@ import argparse
 import protocol
 import paho.mqtt.client as mqtt
 import sensors
+import sys
 from queue import Queue
 
 parser = argparse.ArgumentParser(description='XEZ 4008 emulator for AMT 4010 smart alarm using RS485 and MQTT.')
@@ -15,7 +16,8 @@ args = parser.parse_args()
 
 addresses = args.address.split(',')
 addresses = [int(i) for i in addresses]
-print ('addresses', addresses)
+
+print ('XEZ Addresses', addresses, file=sys.stderr)
 
 sensors = sensors.Sensors (addresses)
 
@@ -36,6 +38,8 @@ client.on_message = mqtt_on_message
 client.connect (args.host, args.port, 60)
 client.loop_start ()
 
+print ("Started XEZ 4008 emulation loop", file=sys.stderr)
+
 run = True
 while run:
     def handle_msg (msg):
@@ -45,7 +49,7 @@ while run:
             expanders = sensors.expanders()
             if expander in expanders:
                 #print ('expander ', expander, 'is in expanders msg is ', msg)
-                if msg[1] == 0x20:
+                if msg[1] == 0x20 and len(msg) == 8:
                     sensors_byte = 0xff
                     sensors_state = sensors.get_sensors_from_expander(expander)
                     #print ('sensors state', sensors_state)
@@ -55,16 +59,16 @@ while run:
                     data = bytes([address]) + b'\x03' + bytes([sensors_byte]) + b'\x00\x00'
                     #print ('sending sensor data: ', sensors_byte, ' for address ', address, ' packet ', data)
                     p.send (data)
-                elif msg[1] == 0x24:
+                elif msg[1] == 0x24 and len(msg) == 4:
                     config_byte = msg[3]
                     p.send (bytes([address]) + b'\x01' + bytes([config_byte]))
-                elif msg[1] == 0x23:
+                elif msg[1] == 0x23 and len(msg) == 3:
                     p.send (bytes([address]) + b'\x02\x00\x00')
 
     while not queue.empty():
         try:
             msg = queue.get()
-            print (msg.topic + " " + str(msg.payload))
+            print (msg.topic + " " + str(msg.payload), file=sys.stderr)
             if msg.topic[:4] == 'amt/':
                 sensor = int (msg.topic[4:])
                 if msg.payload == b'on':
