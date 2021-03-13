@@ -26,7 +26,11 @@ p = protocol.create (args.device)
 queue = Queue()
 
 def mqtt_on_connect (client, userdata, flags, rc):
-    client.subscribe("amt/#")
+    if rc==0:
+        print ("Connected to MQTT broker", file=sys.stderr)
+        client.subscribe("amt/#")
+    else:
+        print ("Error trying to connect to MQTT broker", file=sys.stderr)
 
 def mqtt_on_message (client, userdata, msg):
     queue.put (msg)
@@ -35,8 +39,9 @@ client = mqtt.Client()
 client.on_connect = mqtt_on_connect
 client.on_message = mqtt_on_message
 
-client.connect (args.host, args.port, 60)
+client.reconnect_delay_set(min_delay=1, max_delay=120)
 client.loop_start ()
+client.connect_async (args.host, args.port)
 
 print ("Started XEZ 4008 emulation loop", file=sys.stderr)
 
